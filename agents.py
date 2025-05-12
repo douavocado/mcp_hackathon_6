@@ -12,6 +12,7 @@ from autogen.agentchat.group import AgentTarget, TerminateTarget
 # Import models and messages
 from models import RestaurantSelection, RoutePlan, CompanionOutput
 from agent_messages import SELECTOR_MESSAGE, PLANNER_MESSAGE, COMPANION_MESSAGE
+from agent_messages import DYNAMIC_SELECTOR_MESSAGE, DYNAMIC_PLANNER_MESSAGE, DYNAMIC_COMPANION_MESSAGE
 
 # Load environment variables
 load_dotenv()
@@ -84,7 +85,7 @@ def setup_agent_handoffs(selector_agent, planner_agent, companion_agent):
     selector_agent.handoffs.add_llm_conditions([
         OnCondition(
             target=AgentTarget(planner_agent),
-            condition=StringLLMCondition(prompt="I have selected the three restaurants and am ready to hand over to the route planner."),
+            condition=StringLLMCondition(prompt="I have selected the restaurants and am ready to hand over to the route planner."),
         ),
     ])
     

@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional, Set
 from pydantic import BaseModel, Field
 
 class RestaurantInfo(BaseModel):
@@ -16,23 +16,27 @@ class RouteDetails(BaseModel):
     model_config = {"extra": "forbid"}
 
 class RestaurantSelection(BaseModel):
-    breakfast_restaurant: RestaurantInfo = Field(..., description="Details of the selected breakfast restaurant")
-    lunch_restaurant: RestaurantInfo = Field(..., description="Details of the selected lunch restaurant")
-    dinner_restaurant: RestaurantInfo = Field(..., description="Details of the selected dinner restaurant")
+    selected_meals: List[str] = Field(..., description="List of meal types selected (breakfast, lunch, dinner)")
+    breakfast_restaurant: Optional[RestaurantInfo] = Field(None, description="Details of the selected breakfast restaurant")
+    lunch_restaurant: Optional[RestaurantInfo] = Field(None, description="Details of the selected lunch restaurant")
+    dinner_restaurant: Optional[RestaurantInfo] = Field(None, description="Details of the selected dinner restaurant")
     selection_reasoning: str = Field(..., description="Explanation of why these restaurants were selected based on user preferences")
     
     model_config = {"extra": "forbid"}
 
 class TravelTimes(BaseModel):
-    breakfast_to_lunch: str = Field(..., description="Estimated travel time from breakfast to lunch")
-    lunch_to_dinner: str = Field(..., description="Estimated travel time from lunch to dinner")
+    breakfast_to_lunch: Optional[str] = Field(None, description="Estimated travel time from breakfast to lunch")
+    lunch_to_dinner: Optional[str] = Field(None, description="Estimated travel time from lunch to dinner")
+    breakfast_to_dinner: Optional[str] = Field(None, description="Estimated travel time from breakfast to dinner")
     
     model_config = {"extra": "forbid"}
 
 class RoutePlan(BaseModel):
     route_overview: str = Field(..., description="Brief overview of the full day's route")
-    breakfast_to_lunch: RouteDetails = Field(..., description="Route details from breakfast to lunch location")
-    lunch_to_dinner: RouteDetails = Field(..., description="Route details from lunch to dinner location")
+    selected_meals: List[str] = Field(..., description="List of meal types selected (breakfast, lunch, dinner)")
+    breakfast_to_lunch: Optional[RouteDetails] = Field(None, description="Route details from breakfast to lunch location")
+    lunch_to_dinner: Optional[RouteDetails] = Field(None, description="Route details from lunch to dinner location")
+    breakfast_to_dinner: Optional[RouteDetails] = Field(None, description="Route details from breakfast to dinner location")
     transport_recommendations: List[str] = Field(..., description="List of recommended transportation methods")
     travel_times: TravelTimes = Field(..., description="Estimated travel times between locations")
     
