@@ -15,6 +15,9 @@ from models import RestaurantSelection, RoutePlan
 from mcp import ClientSession
 from agent_messages import DYNAMIC_SELECTOR_MESSAGE, DYNAMIC_PLANNER_MESSAGE, DYNAMIC_COMPANION_MESSAGE
 
+# Import the calendar agent
+from calendar_agent import create_calendar_agent
+
 def init_workflow_context() -> ContextVariables:
     """Initialize the workflow context with default values."""
     return ContextVariables(data={
@@ -25,7 +28,9 @@ def init_workflow_context() -> ContextVariables:
         "requested_meals": ["breakfast", "lunch", "dinner"],  # Default to all meals
         "restaurants_with_locations": [],
         "selected_restaurants": {},
-        "route_plan": None
+        "route_plan": None,
+        "calendar_locations": [],  # New field for calendar-based locations
+        "existing_locations": []   # New field for formatted existing locations
     })
 
 def setup_context_handlers(selector_agent, planner_agent, companion_agent, workflow_context: ContextVariables):
@@ -73,9 +78,15 @@ def setup_context_handlers(selector_agent, planner_agent, companion_agent, workf
                 # Update the planner agent's system message with the selected restaurants
                 planner_system_message = DYNAMIC_PLANNER_MESSAGE.format(
                     selected_meals=", ".join(message.selected_meals),
-                    restaurant_details=format_restaurant_details(selected_restaurants)
+                    restaurant_details=format_restaurant_details(selected_restaurants),
+                    existing_locations=workflow_context.get("existing_locations", "None")
                 )
                 planner_agent.update_system_message(planner_system_message)
+                
+                # DEBUG: Print planner's updated system message
+                print("\n=== UPDATED PLANNER SYSTEM MESSAGE ===")
+                print(planner_system_message)
+                print("======================================\n")
     
     def is_route_plan(*args):
         # Can be called with (sender) or (sender, recipient, message)
@@ -101,9 +112,16 @@ def setup_context_handlers(selector_agent, planner_agent, companion_agent, workf
                 companion_system_message = DYNAMIC_COMPANION_MESSAGE.format(
                     selected_meals=", ".join(message.selected_meals),
                     restaurant_details=format_restaurant_details(workflow_context.get("selected_restaurants", {})),
-                    route_plan=message
+                    route_plan=message,
+                    existing_locations=workflow_context.get("existing_locations", "None"),
+                    calendar_entries=workflow_context.get("calendar_entries", [])
                 )
                 companion_agent.update_system_message(companion_system_message)
+                
+                # DEBUG: Print companion's updated system message
+                print("\n=== UPDATED COMPANION SYSTEM MESSAGE ===")
+                print(companion_system_message)
+                print("=========================================\n")
     
     # Set up agent to update context variables after their work
     selector_agent.register_reply(
@@ -216,6 +234,116 @@ def clear_cache():
     else:
         print("No .cache folder found in current directory.")
 
+async def process_calendar_data(session: ClientSession, workflow_context: ContextVariables) -> None:
+    """
+    Process calendar data using the calendar agent and update the workflow context.
+    
+    Args:
+        session: MCP client session for geocoding
+        workflow_context: Workflow context to update
+    """
+    print("\n--- Processing calendar data to find user locations ---")
+    
+    # Create the calendar agent with the MCP session
+    calendar_agent = create_calendar_agent(mcp_session=session)
+    
+    # Process the calendar entries
+    # Instead of using generate_reply, use the process_calendar_entries function directly
+    calendar_file_path = os.path.join(os.getcwd(), "calendar", "example_calendar.md")
+    
+    try:
+        # Import the functions we need from calendar_agent
+        from calendar_agent import parse_calendar_entries, extract_location_from_description, geocode_location
+        
+        # Parse calendar entries
+        entries = parse_calendar_entries(calendar_file_path)
+        if not entries:
+            print("No calendar entries found. Please check the calendar file.")
+            workflow_context.update({
+                "calendar_locations": [],
+                "calendar_entries": [],
+                "existing_locations": "None"
+            })
+            return
+            
+        # Process each entry to find locations
+        location_entries = []
+        
+        for entry in entries:
+            location = extract_location_from_description(entry["description"])
+            
+            if location:
+                # Get the coordinates for this location
+                try:
+                    location_info = await geocode_location(location, session)
+                    
+                    if location_info and "lat" in location_info and "lon" in location_info:
+                        lat = float(location_info["lat"])
+                        lon = float(location_info["lon"])
+                        
+                        location_entries.append({
+                            "time": f"{entry['start_time']} - {entry['end_time']}",
+                            "description": entry["description"],
+                            "location": location,
+                            "display_name": location_info.get("display_name", location),
+                            "latitude": lat,
+                            "longitude": lon
+                        })
+                except Exception as e:
+                    print(f"Error geocoding location '{location}': {str(e)}")
+        
+        # Format the response
+        if location_entries:
+            report_lines = ["Report of user locations based on calendar entries:"]
+            
+            for entry in location_entries:
+                report_lines.append(
+                    f"- User is likely to be at {entry['display_name']} at {entry['time']}"
+                )
+            
+            # Create a structured Geolocation object for each location
+            from models import Geolocation
+            calendar_locations = [
+                Geolocation(latitude=entry["latitude"], longitude=entry["longitude"])
+                for entry in location_entries
+            ]
+            
+            # Log the results
+            print("\n".join(report_lines))
+            print(f"Found {len(location_entries)} locations in calendar data")
+            
+            # Format existing locations for the planner
+            existing_locations = []
+            for entry in location_entries:
+                existing_locations.append(
+                    f"- {entry['time']}: {entry['display_name']} "
+                    f"(Coordinates: {entry['latitude']}, {entry['longitude']})"
+                )
+            
+            # Update the workflow context
+            workflow_context.update({
+                "calendar_locations": calendar_locations,
+                "calendar_entries": location_entries,
+                "existing_locations": "\n".join(existing_locations) if existing_locations else "None"
+            })
+        else:
+            print("No location data found in calendar entries")
+            
+            # Update with empty data
+            workflow_context.update({
+                "calendar_locations": [],
+                "calendar_entries": [],
+                "existing_locations": "None"
+            })
+            
+    except Exception as e:
+        print(f"Error processing calendar data: {str(e)}")
+        workflow_context.update({
+            "calendar_locations": [],
+            "calendar_entries": [],
+            "existing_locations": "None"
+        })
+
 async def run_restaurant_workflow(session: ClientSession, agents, initial_message: str = None, 
                                   user_food_preferences: str = None, user_constraints: str = None,
                                   requested_meals: List[str] = None):
@@ -246,6 +374,9 @@ async def run_restaurant_workflow(session: ClientSession, agents, initial_messag
     if context_updates:
         workflow_context.update(context_updates)
     
+    # Process calendar data to get user's existing locations
+    await process_calendar_data(session, workflow_context)
+    
     # Get restaurant data from Cambridge
     await get_cambridge_restaurant_data(session, workflow_context)
     
@@ -260,10 +391,24 @@ async def run_restaurant_workflow(session: ClientSession, agents, initial_messag
         requested_meals=", ".join(workflow_context.get("requested_meals")),
         restaurant_count=workflow_context.get("restaurant_count"),
         restaurant_categories="\n".join(workflow_context.get("restaurant_categories", [])),
-        restaurants_with_locations=json.dumps(workflow_context.get("restaurants_with_locations"), indent=2,)
+        restaurants_with_locations=json.dumps(workflow_context.get("restaurants_with_locations"), indent=2,),
+        existing_locations=workflow_context.get("existing_locations", "None")
     )
     selector_agent.update_system_message(selector_system_message)
     
+    # DEBUG: Print updated system messages for all agents before execution
+    print("\n=== INITIAL SELECTOR SYSTEM MESSAGE ===")
+    print(selector_system_message)
+    print("=======================================\n")
+    
+    print("\n=== INITIAL PLANNER SYSTEM MESSAGE ===")
+    print(planner_agent.system_message)
+    print("======================================\n")
+    
+    print("\n=== INITIAL COMPANION SYSTEM MESSAGE ===")
+    print(companion_agent.system_message)
+    print("========================================\n")
+
     # Create the agent pattern
     agent_pattern = DefaultPattern(
         agents=[selector_agent, planner_agent, companion_agent],
@@ -274,7 +419,7 @@ async def run_restaurant_workflow(session: ClientSession, agents, initial_messag
     # Default message if none provided
     if not initial_message:
         meals_str = ", ".join(workflow_context.get("requested_meals"))
-        initial_message = f"Please select restaurants for {meals_str} in Cambridge based on my food preference for {workflow_context.get('food_preferences')} and my constraints: {workflow_context.get('constraints')}. Then create a route plan between these places and present the information to me in a friendly, conversational manner."
+        initial_message = f"Please select restaurants for {meals_str} in Cambridge based on my food preference for {workflow_context.get('food_preferences')} and my constraints: {workflow_context.get('constraints')} and the following calendar entries: {workflow_context.get('calendar_entries')}. Then create a route plan between these places and present the information to me in a friendly, conversational manner."
     
     # Run the group chat
     result = await a_initiate_group_chat(

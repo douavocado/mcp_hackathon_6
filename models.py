@@ -1,6 +1,12 @@
 from typing import List, Optional, Set
 from pydantic import BaseModel, Field
 
+class Geolocation(BaseModel):
+    latitude: float = Field(..., description="Latitude coordinate")
+    longitude: float = Field(..., description="Longitude coordinate")
+    
+    model_config = {"extra": "forbid"}
+
 class RestaurantInfo(BaseModel):
     name: str = Field(..., description="Name of the restaurant")
     type: str = Field(..., description="Type of restaurant (e.g., pub, cafe)")

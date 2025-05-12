@@ -10,8 +10,8 @@ from autogen import ConversableAgent, UpdateSystemMessage
 from autogen.agentchat.group import AgentTarget, TerminateTarget
 
 # Import models and messages
-from models import RestaurantSelection, RoutePlan, CompanionOutput
-from agent_messages import SELECTOR_MESSAGE, PLANNER_MESSAGE, COMPANION_MESSAGE
+from models import RestaurantSelection, RoutePlan, CompanionOutput, Geolocation
+from agent_messages import SELECTOR_MESSAGE, PLANNER_MESSAGE, COMPANION_MESSAGE, CALENDAR_MESSAGE
 from agent_messages import DYNAMIC_SELECTOR_MESSAGE, DYNAMIC_PLANNER_MESSAGE, DYNAMIC_COMPANION_MESSAGE
 
 # Load environment variables
@@ -30,16 +30,43 @@ DEFAULT_LLM_CONFIG = {
     'timeout': 1200
 }
 
+# Custom debug agent that logs the system message before generating a reply
+class DebugConversableAgent(ConversableAgent):
+    """A ConversableAgent that logs its system message before generating a reply."""
+    
+    async def _generate_reply(self, *args, **kwargs):
+        """Override _generate_reply to log the system message."""
+        print(f"\n=== {self.name} GENERATING REPLY WITH SYSTEM MESSAGE ===")
+        print(self.system_message)
+        print(f"====== END {self.name} SYSTEM MESSAGE ======\n")
+        
+        # Call the parent method to actually generate the reply
+        return await super()._generate_reply(*args, **kwargs)
+
+def create_calendar_agent():
+    """Create the calendar agent with appropriate configurations."""
+    calendar_config = copy.deepcopy(DEFAULT_LLM_CONFIG)
+    calendar_config['config_list'][0]['response_format'] = Geolocation
+
+    agent = DebugConversableAgent(
+        name="calendar",
+        system_message=CALENDAR_MESSAGE,
+        llm_config=calendar_config,
+        # Removed the UpdateSystemMessage to avoid resetting to static message
+    )
+    
+    return agent
+
 def create_selector_agent():
     """Create the restaurant selector agent with appropriate configurations."""
     selector_config = copy.deepcopy(DEFAULT_LLM_CONFIG)
     selector_config['config_list'][0]['response_format'] = RestaurantSelection
     
-    agent = ConversableAgent(
+    agent = DebugConversableAgent(
         name="restaurant_selector",
         system_message=SELECTOR_MESSAGE,
         llm_config=selector_config,
-        update_agent_state_before_reply=[UpdateSystemMessage(SELECTOR_MESSAGE)],
+        # Removed the UpdateSystemMessage to avoid resetting to static message
     )
     
     return agent
@@ -49,11 +76,11 @@ def create_planner_agent():
     planner_config = copy.deepcopy(DEFAULT_LLM_CONFIG)
     planner_config['config_list'][0]['response_format'] = RoutePlan
     
-    agent = ConversableAgent(
+    agent = DebugConversableAgent(
         name="route_planner",
         system_message=PLANNER_MESSAGE,
         llm_config=planner_config,
-        update_agent_state_before_reply=[UpdateSystemMessage(PLANNER_MESSAGE)],
+        # Removed the UpdateSystemMessage to avoid resetting to static message
     )
     
     return agent
@@ -63,11 +90,11 @@ def create_companion_agent():
     companion_config = copy.deepcopy(DEFAULT_LLM_CONFIG)
     companion_config['config_list'][0]['response_format'] = CompanionOutput
     
-    agent = ConversableAgent(
+    agent = DebugConversableAgent(
         name="companion",
         system_message=COMPANION_MESSAGE,
         llm_config=companion_config,
-        update_agent_state_before_reply=[UpdateSystemMessage(COMPANION_MESSAGE)],
+        # Removed the UpdateSystemMessage to avoid resetting to static message
     )
     
     return agent
