@@ -395,19 +395,6 @@ async def run_restaurant_workflow(session: ClientSession, agents, initial_messag
         existing_locations=workflow_context.get("existing_locations", "None")
     )
     selector_agent.update_system_message(selector_system_message)
-    
-    # DEBUG: Print updated system messages for all agents before execution
-    print("\n=== INITIAL SELECTOR SYSTEM MESSAGE ===")
-    print(selector_system_message)
-    print("=======================================\n")
-    
-    print("\n=== INITIAL PLANNER SYSTEM MESSAGE ===")
-    print(planner_agent.system_message)
-    print("======================================\n")
-    
-    print("\n=== INITIAL COMPANION SYSTEM MESSAGE ===")
-    print(companion_agent.system_message)
-    print("========================================\n")
 
     # Create the agent pattern
     agent_pattern = DefaultPattern(
