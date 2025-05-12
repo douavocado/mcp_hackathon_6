@@ -15,5 +15,6 @@ cd ag2
 pip install -e .[gemini,mcp,openai,anthropic]
 cd ..
 pip install ipykernel
+pip install arxiv
 pip install -U jupyterlab notebook ipywidgets
 python -m ipykernel install --user --name mcp_env --display-name "mcp_env"
